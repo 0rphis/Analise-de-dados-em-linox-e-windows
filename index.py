@@ -12,6 +12,7 @@ NOME_ARQUIVO = "benchmark_memoria_100a1000mb.csv"
 def em_milisegundos(inicio, fim):
     return (fim - inicio) / 1_000_000
 
+
 def gravar_tempo_total(pasta, tempo_total):
     nome_resumo = "tempo_execucao.csv"
     caminho_resumo = os.path.join(pasta, nome_resumo)
@@ -35,8 +36,7 @@ def gravar_tempo_total(pasta, tempo_total):
 
 
 def main():
-    # Salva o CSV na mesma pasta deste programa, independentemente do sistema
-    # operacional ou da pasta usada para executar o script.
+    # Salva o CSV na mesma pasta deste programa
     pasta_do_script = os.path.dirname(os.path.abspath(__file__))
     caminho_arquivo = os.path.join(pasta_do_script, NOME_ARQUIVO)
     inicio_total = time.perf_counter()
@@ -45,10 +45,9 @@ def main():
     print(caminho_arquivo)
     print()
 
-    # newline="" permite que o modulo csv controle as quebras de linha.
-    # Isso evita linhas vazias extras ao abrir o arquivo no Windows.
     with open(caminho_arquivo, "w", newline="", encoding="utf-8") as arquivo:
         escritor = csv.writer(arquivo)
+
         escritor.writerow([
             "tamanho_mb",
             "tamanho_bytes",
@@ -61,33 +60,59 @@ def main():
 
         for tamanho_mb in TAMANHOS_MB:
             tamanho_bytes = tamanho_mb * 1024 * 1024
-            padrao = b"\xAA" * tamanho_bytes
 
-            print(f"=== Processando {tamanho_mb} MB ({REPETICOES} repeticoes) ===")
+            # Padrão de apenas 1 MB.
+            # Evita criar outro bloco do mesmo tamanho da memória testada.
+            padrao = b"\xAA" * (1024 * 1024)
+
+            print(
+                f"=== Processando {tamanho_mb} MB "
+                f"({REPETICOES} repeticoes) ==="
+            )
 
             for iteracao in range(1, REPETICOES + 1):
+
+                # ALLOC
                 inicio = time.perf_counter_ns()
+
                 bloco = bytearray(tamanho_bytes)
+
                 fim = time.perf_counter_ns()
                 alloc_ms = em_milisegundos(inicio, fim)
 
+                # WRITE
                 inicio = time.perf_counter_ns()
-                bloco[:] = padrao
+
+                for posicao in range(0, tamanho_bytes, len(padrao)):
+                    fim_posicao = min(
+                        posicao + len(padrao),
+                        tamanho_bytes
+                    )
+
+                    bloco[posicao:fim_posicao] = padrao[
+                        :fim_posicao - posicao
+                    ]
+
                 fim = time.perf_counter_ns()
                 write_ms = em_milisegundos(inicio, fim)
 
+                # READ
                 inicio = time.perf_counter_ns()
+
                 soma = sum(bloco)
+
                 fim = time.perf_counter_ns()
                 read_ms = em_milisegundos(inicio, fim)
 
-                # "del" remove a referencia ao bloco. Nao usamos clear(), pois
-                # ele zera cada byte e alteraria o que esta sendo medido.
+                # FREE
                 inicio = time.perf_counter_ns()
+
                 del bloco
+
                 fim = time.perf_counter_ns()
                 free_ms = em_milisegundos(inicio, fim)
 
+                # Salva os resultados
                 escritor.writerow([
                     tamanho_mb,
                     tamanho_bytes,
@@ -99,12 +124,17 @@ def main():
                 ])
 
                 if iteracao % 10 == 0 or iteracao == REPETICOES:
-                    print(f"  -> Progresso: {iteracao}/{REPETICOES} iteracoes concluidas")
+                    print(
+                        f"  -> Progresso: "
+                        f"{iteracao}/{REPETICOES} iteracoes concluidas"
+                    )
 
-            # Mantem os dados seguros caso o programa seja interrompido depois.
+            # Garante que os dados sejam escritos no CSV
             arquivo.flush()
+
             del padrao
             gc.collect()
+
             print()
 
     print("Benchmark concluido com sucesso!")
@@ -113,7 +143,10 @@ def main():
     fim_total = time.perf_counter()
     tempo_total = fim_total - inicio_total
 
-    caminho_resumo = gravar_tempo_total(pasta_do_script, tempo_total)
+    caminho_resumo = gravar_tempo_total(
+        pasta_do_script,
+        tempo_total
+    )
 
     print(f"Tempo total: {tempo_total:.2f} segundos")
     print(f"Tempo total: {tempo_total / 60:.2f} minutos")
@@ -122,4 +155,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
